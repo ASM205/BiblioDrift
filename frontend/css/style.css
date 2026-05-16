@@ -5491,3 +5491,49 @@ input:checked+.slider:before {
         justify-content: flex-end;
     }
 }
+
+
+.footer-logo {
+  height: 40px;
+  width: auto;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+.main-footer {
+ 
+  padding: 4rem 2rem 1rem;
+}
+
+.footer-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2rem;
+}
+
+.footer-container a {
+ 
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+
+
+.social-icons {
+  display: flex;
+  gap: 1rem;
+}
+
+.footer-bottom {
+  text-align: center;
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid #374151;
+}
+
