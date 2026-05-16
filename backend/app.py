@@ -898,132 +898,6 @@ price_tracker = get_price_tracker(db)
 
 
 # =========================================================================
-# ENDPOINT: Bulk Library Sync
-# Enables syncing a whole batch of books from local storage/mobile to the
-# authoritative cloud backend. Contains critical safeguards:
-# 1. Payload validation protects against memory bloat.
-# 2. Iterate array using nested transactions `db.session.begin_nested()`.
-#    This ensures failing to parse a single damaged book doesn't abort
-#    the whole sync run.
-# 3. Optimistic locking helps gracefully bypass older item updates from
-#    the client when the server's record is strictly newer.
-# =========================================================================
-@app.route('/api/v1/library/sync', methods=['POST'])
-@jwt_required()
-def sync_library():
-    """Sync a list of books from local storage to the user's account."""
-    try:
-        current_user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        is_valid, validated_data = validate_request(SyncLibraryRequest, data)
-        if not is_valid:
-            return jsonify(validated_data), 400
-        
-        user_id = validated_data.user_id
-        items = sanitize_payload(validated_data.items)
-        
-        if str(user_id) != str(current_user_id):
-            return forbidden_error("Cannot sync to another user's library")
-
-        invalid_ids = []
-        for index, item_data in enumerate(validated_data.items):
-            if not isinstance(item_data, dict):
-                continue
-            raw_google_id = item_data.get('id')
-            if raw_google_id is None or not validate_google_books_id(str(raw_google_id).strip()):
-                invalid_ids.append((index, raw_google_id))
-
-        if invalid_ids:
-            for index, bad_value in invalid_ids:
-                logger.warning(
-                    "Rejected sync payload with invalid Google Books ID. user_id=%s item_index=%s id=%r",
-                    user_id,
-                    index,
-                    bad_value
-                )
-            return validation_error("Invalid Google Books ID format in sync payload")
-
-        # Sanitize the items list only after validating Google Books IDs.
-        items = sanitize_payload(validated_data.items)
-        
-        synced_count = 0
-        conflicts = 0
-        errors = 0
-        
-        for item_data in items:
-            try:
-                with db.session.begin_nested():
-                    if not isinstance(item_data, dict):
-                        errors += 1
-                        continue
-                        
-                    google_id = item_data.get('id')
-                    if not google_id:
-                        errors += 1
-                        continue
-                    
-                    book = Book.query.filter_by(google_books_id=google_id).first()
-                    
-                    if not book:
-                        volume_info = item_data.get('volumeInfo', {})
-                        image_links = volume_info.get('imageLinks', {})
-                        authors = volume_info.get('authors', [])
-                        if isinstance(authors, list):
-                            authors = ", ".join(authors)
-
-                        book = Book(
-                            google_books_id=google_id,
-                            title=volume_info.get('title', 'Untitled'),
-                            authors=authors,
-                            thumbnail=image_links.get('thumbnail', '')
-                        )
-                        db.session.add(book)
-                        db.session.flush()
-
-                    existing_item = ShelfItem.query.filter_by(user_id=user_id, book_id=book.id).with_for_update().first()
-                    shelf_type = item_data.get('shelf', 'want')
-                    if shelf_type not in ['want', 'current', 'finished']:
-                        shelf_type = 'want'
-
-                    if not existing_item:
-                        new_item = ShelfItem(
-                            user_id=user_id,
-                            book_id=book.id,
-                            shelf_type=shelf_type,
-                            progress=item_data.get('progress', 0)
-                        )
-                        db.session.add(new_item)
-                        synced_count += 1
-                    else:
-                        remote_version = item_data.get('version')
-                        if remote_version and remote_version < existing_item.version:
-                            conflicts += 1
-                            continue
-                        
-                        existing_item.shelf_type = shelf_type
-                        existing_item.progress = item_data.get('progress', existing_item.progress)
-                        existing_item.version += 1
-                        synced_count += 1
-                    
-            except SQLAlchemyError as e:
-                logger.error(f"Database error syncing item {item_data.get('id', 'unknown')}: {e}")
-                errors += 1
-            except Exception as e:
-                logger.error(f"Unexpected error syncing item {item_data.get('id', 'unknown')}: {e}")
-                errors += 1
-        
-        db.session.commit()
-        return success_response(data={
-            "message": f"Synced {synced_count} items",
-            "errors": errors,
-            "conflicts": conflicts
-        })
-    except Exception as e:
-        db.session.rollback()
-        return internal_error(str(e))
-
-# =========================================================================
 # ENDPOINT: User Registration
 # Core signup flow. Validates credentials, creates a User entity, and
 # immediately responds with an active session ready to go.
@@ -2782,6 +2656,9 @@ def sync_library():
         if str(user_id) != str(current_user_id):
             return forbidden_error("Cannot sync to another user's library")
 
+        # NOTE: validated_data.items is List[Dict[str, Any]] per SyncLibraryRequest validator.
+        # Each item_data is a raw dictionary (not a Pydantic model), so .get() and isinstance()
+        # checks are safe. Sanitization happens after ID validation to prevent XSS in valid books.
         invalid_ids = []
         for index, item_data in enumerate(validated_data.items):
             if not isinstance(item_data, dict):
