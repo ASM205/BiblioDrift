@@ -238,8 +238,8 @@
                     <span class="tooltip-text"><i class="fa-solid fa-comments"></i> Chat</span>
                 </div>
                 <div class="tooltip">
-                    <a href="auth.html">Sign In</a>
-                    <span class="tooltip-text"><i class="fa-solid fa-key"></i> Access account</span>
+                    <a href="auth.html" id="navAuthLink">Sign In</a>
+                    <span class="tooltip-text" id="navAuthTooltip"><i class="fa-solid fa-key"></i> Access account</span>
                 </div>
             </nav>
             <button id="themeToggle" class="btn-icon" title="Toggle Theme">
@@ -382,23 +382,6 @@
         </div>
     </main>
 
-    <script>
-        window.MOOD_API_BASE = 'http://localhost:5001/api/v1';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const link = document.getElementById('navAuthLink');
-            const tooltip = document.getElementById('navAuthTooltip');
-
-            if (typeof window.verifyStoredAuthSession === 'function' && typeof window.renderAuthNavigation === 'function') {
-                window.verifyStoredAuthSession().then((user) => {
-                    window.renderAuthNavigation(link, tooltip, Boolean(user));
-                });
-                return;
-            }
-
-            window.renderAuthNavigation?.(link, tooltip, false);
-        });
-    </script>
     <script src="../js/config.js"></script>
     <script src="../js/ambient.js"></script>
     <script src="../js/chat.js"></script>

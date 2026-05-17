@@ -155,6 +155,7 @@ function renderAuthNavigation(authLink, tooltip, isAuthenticated) {
         authLink.innerHTML = '<i class="fa-solid fa-user"></i> Profile';
         authLink.href = 'profile.html';
         authLink.classList.remove('active');
+        authLink.setAttribute('aria-label', 'View profile');
         if (tooltip) tooltip.innerHTML = '<i class="fa-solid fa-id-card"></i> View Profile';
         return;
     }
@@ -175,21 +176,15 @@ async function verifyStoredAuthSession() {
         const token = SafeStorage.get('bibliodrift_token');
         const storedUser = parseStoredUser();
 
-        if (!token) {
-            if (storedUser || SafeStorage.get('isLoggedIn') === 'true') {
-                clearStoredAuthState();
-            }
-            return null;
-        }
-
         if (token === 'demo-token-12345') {
             return storedUser;
         }
 
         try {
             const response = await fetch(`${MOOD_API_BASE}/auth/verify`, {
+                credentials: 'include',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 }
             });
 
@@ -1880,10 +1875,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     const verifiedUser = await verifyStoredAuthSession();
-    const isLoggedIn = !!libManager.getUser() || !!verifiedUser; // Rely on user object instead of forgeable flag
+    const isLoggedIn = !!verifiedUser;
     const authLink = document.getElementById('navAuthLink');
     const tooltip = document.getElementById('navAuthTooltip');
-    renderAuthNavigation(authLink, tooltip, Boolean(verifiedUser));
+    renderAuthNavigation(authLink, tooltip, isLoggedIn);
 
     // Redirect if already logged in and on the sign-in page
     if (verifiedUser && window.location.pathname.endsWith('auth.html')) {

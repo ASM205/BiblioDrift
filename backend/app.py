@@ -1,7 +1,7 @@
 # Flask backend application with GoodReads mood analysis integration
 # Initialize Flask app, configure CORS, and setup mood analysis endpoints
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, url_for
 from flask_cors import CORS
 from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, 
@@ -15,6 +15,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
 import os
 import requests
+import secrets
+from urllib.parse import urlencode
 
 import logging
 from datetime import datetime, timedelta, timezone
@@ -26,8 +28,11 @@ from sanitizer import sanitize_payload
 # Load environment variables from config directory based on APP_ENV
 env = os.getenv('APP_ENV', 'development')
 env_path = os.path.join(os.path.dirname(__file__), '..', 'config', f'.env.{env}')
+backend_env_path = os.path.join(os.path.dirname(__file__), '.env')
 if os.path.exists(env_path):
     load_dotenv(env_path)
+elif os.path.exists(backend_env_path):
+    load_dotenv(backend_env_path)
 else:
     load_dotenv()
 
@@ -122,7 +127,7 @@ jwt = JWTManager(app)
 # =====================================================================
 # ALLOWED_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:5000,http://localhost:5000
 # For development, we'll allow all to be safe, then restrict in prod
-CORS(app, supports_credentials=True, origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5000", "http://localhost:5000"])
+CORS(app, supports_credentials=True, origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5501", "http://localhost:5501", "http://127.0.0.1:5000", "http://localhost:5000"])
 
 # Initialize cache service
 cache_service.init_app(app)
@@ -141,6 +146,10 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"],
     storage_uri="memory://"
 )
+
+
+
+
 
 @app.errorhandler(404)
 def page_not_found(e: Exception):
@@ -1079,6 +1088,7 @@ def register():
         logger.error(f"Unexpected error in register endpoint: {e}")
         return internal_error(str(e))
 
+
 @app.route('/api/v1/login', methods=['POST'])
 @limiter.limit("5 per minute")
 def login():
@@ -1111,11 +1121,161 @@ def login():
             )
             set_access_cookies(resp, access_token)
             return resp, status
+
+        if user and not user.password_hash:
+            return auth_error("This account uses Google sign-in. Please continue with Google.")
             
         return auth_error("Invalid username or password")
     except Exception as e:
         logger.error(f"Unexpected error in login: {type(e).__name__}: {e}", exc_info=True)
         return handle_exception(e, "login")
+
+
+@app.route('/api/v1/auth/google', methods=['GET'])
+@limiter.limit("10 per minute")
+def google_login():
+    google_client_id = app.config.get('GOOGLE_CLIENT_ID')
+    google_redirect_uri = app.config.get('GOOGLE_OAUTH_REDIRECT_URI') or url_for('google_oauth_callback', _external=True)
+    google_scope = app.config.get('GOOGLE_OAUTH_SCOPE', 'openid email profile https://www.googleapis.com/auth/books')
+
+    if not google_client_id:
+        return internal_error("Google OAuth client ID is not configured.")
+
+    oauth_state = secrets.token_urlsafe(32)
+    params = {
+        'client_id': google_client_id,
+        'redirect_uri': google_redirect_uri,
+        'response_type': 'code',
+        'scope': google_scope,
+        'state': oauth_state,
+        'access_type': 'offline',
+        'prompt': 'select_account'
+    }
+
+    response = redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}")
+    response.set_cookie(
+        'google_oauth_state',
+        oauth_state,
+        httponly=True,
+        secure=app_config.is_production(),
+        samesite='Lax',
+        max_age=600
+    )
+    return response
+
+
+@app.route('/api/v1/auth/google/callback', methods=['GET'])
+@limiter.limit("10 per minute")
+def google_oauth_callback():
+    code = request.args.get('code')
+    state = request.args.get('state')
+    stored_state = request.cookies.get('google_oauth_state')
+    google_client_id = app.config.get('GOOGLE_CLIENT_ID')
+    google_client_secret = app.config.get('GOOGLE_CLIENT_SECRET')
+    google_redirect_uri = app.config.get('GOOGLE_OAUTH_REDIRECT_URI') or url_for('google_oauth_callback', _external=True)
+    frontend_redirect_url = app.config.get('GOOGLE_OAUTH_FRONTEND_REDIRECT_URL', 'http://127.0.0.1:5500/frontend/pages/library.html')
+    
+
+    if not code:
+        return auth_error("Google OAuth authorization code is missing.")
+
+    if not stored_state or not state or stored_state != state:
+        return auth_error("Invalid Google OAuth state.")
+
+    if not google_client_id or not google_client_secret:
+        return internal_error("Google OAuth client credentials are not configured.")
+
+    try:
+        token_response = requests.post(
+            'https://oauth2.googleapis.com/token',
+            data={
+                'code': code,
+                'client_id': google_client_id,
+                'client_secret': google_client_secret,
+                'redirect_uri': google_redirect_uri,
+                'grant_type': 'authorization_code'
+            },
+            timeout=10
+        )
+        token_response.raise_for_status()
+        token_data = token_response.json()
+        access_token = token_data.get('access_token')
+
+        if not access_token:
+            return auth_error("Google OAuth access token is missing.")
+
+        userinfo_response = requests.get(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=10
+        )
+        userinfo_response.raise_for_status()
+        google_user = userinfo_response.json()
+
+        google_id = google_user.get('sub')
+        email = google_user.get('email')
+        username = google_user.get('name') or (email.split('@')[0] if email else None)
+
+        if not google_id or not email or not username:
+            return auth_error("Google account did not provide required profile information.")
+
+        user = User.query.filter_by(google_id=google_id).first()
+        if not user:
+            user = User.query.filter_by(email=email).first()
+            if user:
+                user.google_id = google_id
+                user.auth_provider = 'google'
+                user.profile_picture = google_user.get('picture')
+                user.email_verified = bool(google_user.get('email_verified'))
+            else:
+                base_username = ''.join(ch for ch in username.strip().replace(' ', '_') if ch.isalnum() or ch == '_')[:50]
+                if len(base_username) < 3:
+                    base_username = email.split('@')[0][:50]
+
+                unique_username = base_username
+                suffix = 1
+                while User.query.filter_by(username=unique_username).first():
+                    suffix_text = str(suffix)
+                    unique_username = f"{base_username[:50 - len(suffix_text)]}{suffix_text}"
+                    suffix += 1
+
+                user = User(
+                    username=unique_username,
+                    email=email,
+                    google_id=google_id,
+                    auth_provider='google',
+                    profile_picture=google_user.get('picture'),
+                    email_verified=bool(google_user.get('email_verified'))
+                )
+                db.session.add(user)
+
+        db.session.commit()
+
+        jwt_access_token = create_access_token(identity=str(user.id))
+        response = redirect(frontend_redirect_url)
+        set_access_cookies(response, jwt_access_token)
+        response.delete_cookie('google_oauth_state')
+        return response
+    except requests.RequestException as e:
+        logger.error(f"Google OAuth request failed: {e}", exc_info=True)
+        return service_unavailable_error("Google authentication service is unavailable.")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Google OAuth callback failed: {e}", exc_info=True)
+        return internal_error("Google authentication failed.")
+
+
+@app.route('/api/v1/auth/verify', methods=['GET'])
+@jwt_required()
+def verify_auth():
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    print(user)
+
+    if not user:
+        return auth_error("Invalid or expired session.")
+
+    return jsonify({"user": user.to_dict()}), 200
 
 
 @app.route('/api/v1/logout', methods=['POST'])
@@ -1858,8 +2018,11 @@ from sanitizer import sanitize_payload
 # Load environment variables from config directory based on APP_ENV
 env = os.getenv('APP_ENV', 'development')
 env_path = os.path.join(os.path.dirname(__file__), '..', 'config', f'.env.{env}')
+backend_env_path = os.path.join(os.path.dirname(__file__), '.env')
 if os.path.exists(env_path):
     load_dotenv(env_path)
+elif os.path.exists(backend_env_path):
+    load_dotenv(backend_env_path)
 else:
     load_dotenv()
 
@@ -1956,7 +2119,7 @@ jwt = JWTManager(app)
 # =====================================================================
 # ALLOWED_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:5000,http://localhost:5000
 # For development, we'll allow all to be safe, then restrict in prod
-CORS(app, supports_credentials=True, origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5000", "http://localhost:5000"])
+CORS(app, supports_credentials=True, origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5501", "http://localhost:5501", "http://127.0.0.1:5000", "http://localhost:5000"])
 
 # Initialize cache service
 cache_service.init_app(app)
@@ -2955,6 +3118,9 @@ def login():
         # Try to find user by username or email
         user = User.query.filter((User.username==username_or_email) | (User.email==username_or_email)).first()
         
+        if user and not user.password_hash:
+            return auth_error("This account uses Google sign-in. Please continue with Google.")
+
         if user and user.check_password(password):
             # Create JWT token
             access_token = create_access_token(identity=str(user.id))
@@ -2972,6 +3138,151 @@ def login():
     except Exception as e:
         logger.error(f"Unexpected error in login: {type(e).__name__}: {e}", exc_info=True)
         return handle_exception(e, "login")
+
+
+@app.route('/api/v1/auth/google', methods=['GET'])
+@limiter.limit("10 per minute")
+def google_login_active():
+    google_client_id = app.config.get('GOOGLE_CLIENT_ID')
+    google_redirect_uri = app.config.get('GOOGLE_OAUTH_REDIRECT_URI') or url_for('google_oauth_callback_active', _external=True)
+    google_scope = app.config.get('GOOGLE_OAUTH_SCOPE', 'openid email profile')
+
+    if not google_client_id:
+        return internal_error("Google OAuth client ID is not configured.")
+
+    oauth_state = secrets.token_urlsafe(32)
+    params = {
+        'client_id': google_client_id,
+        'redirect_uri': google_redirect_uri,
+        'response_type': 'code',
+        'scope': google_scope,
+        'state': oauth_state,
+        'access_type': 'offline',
+        'prompt': 'select_account'
+    }
+
+    response = redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}")
+    response.set_cookie(
+        'google_oauth_state',
+        oauth_state,
+        httponly=True,
+        secure=app_config.is_production(),
+        samesite='Lax',
+        max_age=600
+    )
+    return response
+
+
+@app.route('/api/v1/auth/google/callback', methods=['GET'])
+@limiter.limit("10 per minute")
+def google_oauth_callback_active():
+    code = request.args.get('code')
+    state = request.args.get('state')
+    stored_state = request.cookies.get('google_oauth_state')
+    google_client_id = app.config.get('GOOGLE_CLIENT_ID')
+    google_client_secret = app.config.get('GOOGLE_CLIENT_SECRET')
+    google_redirect_uri = app.config.get('GOOGLE_OAUTH_REDIRECT_URI') or url_for('google_oauth_callback_active', _external=True)
+    frontend_redirect_url = app.config.get('GOOGLE_OAUTH_FRONTEND_REDIRECT_URL', 'http://127.0.0.1:5500/frontend/pages/library.html')
+
+    if not code:
+        return auth_error("Google OAuth authorization code is missing.")
+
+    if not stored_state or not state or stored_state != state:
+        return auth_error("Invalid Google OAuth state.")
+
+    if not google_client_id or not google_client_secret:
+        return internal_error("Google OAuth client credentials are not configured.")
+
+    try:
+        token_response = requests.post(
+            'https://oauth2.googleapis.com/token',
+            data={
+                'code': code,
+                'client_id': google_client_id,
+                'client_secret': google_client_secret,
+                'redirect_uri': google_redirect_uri,
+                'grant_type': 'authorization_code'
+            },
+            timeout=10
+        )
+        token_response.raise_for_status()
+        token_data = token_response.json()
+        access_token = token_data.get('access_token')
+
+        if not access_token:
+            return auth_error("Google OAuth access token is missing.")
+
+        userinfo_response = requests.get(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=10
+        )
+        userinfo_response.raise_for_status()
+        google_user = userinfo_response.json()
+
+        google_id = google_user.get('sub')
+        email = google_user.get('email')
+        username = google_user.get('name') or (email.split('@')[0] if email else None)
+
+        if not google_id or not email or not username:
+            return auth_error("Google account did not provide required profile information.")
+
+        user = User.query.filter_by(google_id=google_id).first()
+        if not user:
+            user = User.query.filter_by(email=email).first()
+            if user:
+                user.google_id = google_id
+                user.auth_provider = 'google'
+                user.profile_picture = google_user.get('picture')
+                user.email_verified = bool(google_user.get('email_verified'))
+            else:
+                base_username = ''.join(ch for ch in username.strip().replace(' ', '_') if ch.isalnum() or ch == '_')[:50]
+                if len(base_username) < 3:
+                    base_username = email.split('@')[0][:50]
+
+                unique_username = base_username
+                suffix = 1
+                while User.query.filter_by(username=unique_username).first():
+                    suffix_text = str(suffix)
+                    unique_username = f"{base_username[:50 - len(suffix_text)]}{suffix_text}"
+                    suffix += 1
+
+                user = User(
+                    username=unique_username,
+                    email=email,
+                    google_id=google_id,
+                    auth_provider='google',
+                    profile_picture=google_user.get('picture'),
+                    email_verified=bool(google_user.get('email_verified'))
+                )
+                db.session.add(user)
+
+        db.session.commit()
+
+        jwt_access_token = create_access_token(identity=str(user.id))
+        response = redirect(frontend_redirect_url)
+        set_access_cookies(response, jwt_access_token)
+        response.delete_cookie('google_oauth_state')
+        return response
+    except requests.RequestException as e:
+        logger.error(f"Google OAuth request failed: {e}", exc_info=True)
+        return service_unavailable_error("Google authentication service is unavailable.")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Google OAuth callback failed: {e}", exc_info=True)
+        return internal_error("Google authentication failed.")
+
+
+@app.route('/api/v1/auth/verify', methods=['GET'])
+@jwt_required()
+def verify_auth_session():
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+
+    if not user:
+        return auth_error("Invalid or expired session.")
+
+    return jsonify({"user": user.to_dict()}), 200
 
 
 @app.route('/api/v1/logout', methods=['POST'])
