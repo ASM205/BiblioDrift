@@ -15,12 +15,13 @@ class AmbientManager {
         this.fireToggle = document.getElementById('fireToggle');
         this.spaceToggle = document.getElementById('spaceToggle');
         this.trainToggle = document.getElementById('trainToggle');
-        this.forestToggle = document.getElementById('forestToggle'); // 🌟 ADD THIS LINE
+        this.forestToggle = document.getElementById('forestToggle'); 
         this.animeToggle = document.getElementById('animeToggle');
         this.magicToggle = document.getElementById('magicToggle');
-
-              // Defensive check: only initialize if core panel elements exist
-
+        this.oceanToggle = document.getElementById('oceanToggle');
+        this.stormToggle = document.getElementById('stormToggle');
+        this.volumeSlider = document.getElementById('ambientVolume');
+      
         if (!this.toggleBtn || !this.panel) {
 
             console.warn("Ambient Sanctuary elements missing from DOM.");
@@ -31,15 +32,18 @@ class AmbientManager {
 
         // --- 2. Audio Initialization & Audio Asset Mapping ---
         this.rainAudio = new Audio('https://archive.org/download/Red_Library_Nature_Rain/R22-25-General%20Rain.mp3');
+        this.rainAudio.preload = 'auto';
         this.fireAudio = new Audio('https://archive.org/download/1-hour-cozy-fire-crackling-fireplace-320/1%20hour%20Cozy%20Fire%20Crackling%20Fireplace%20320.mp3');
         this.spaceAudio = new Audio('../assets/sounds/space.mp3');
         this.trainAudio = new Audio('../assets/sounds/train.mp3');
         this.forestAudio = new Audio('../assets/sounds/forest.mp3');
         this.animeAudio = new Audio('../assets/sounds/anime.mp3');
         this.magicAudio = new Audio('../assets/sounds/magic.mp3');
+        this.oceanAudio = new Audio('../assets/sounds/calm-ocean-waves.mp3');
+        this.stormAudio = new Audio('../assets/sounds/Rain-and-storm.mp3');
 
         // Cache all audio objects into an array for cleaner looping operations
-        this.allTracks = [this.rainAudio, this.fireAudio, this.spaceAudio, this.trainAudio, this.forestAudio, this.animeAudio, this.magicAudio];
+        this.allTracks = [this.rainAudio, this.fireAudio, this.spaceAudio, this.trainAudio, this.forestAudio, this.animeAudio, this.magicAudio,this.oceanAudio,this.stormAudio];
 
         // --- 3. Preload and Loop Configuration ---
         this.allTracks.forEach(track => {
@@ -155,6 +159,8 @@ class AmbientManager {
         this.handlePlayback(this.forestToggle, this.forestAudio, "Forest Cabin");
         this.handlePlayback(this.animeToggle, this.animeAudio, "Anime Ambience");
         this.handlePlayback(this.magicToggle, this.magicAudio, "Magic Realm");
+        this.handlePlayback(this.oceanToggle, this.oceanAudio, "Calm Ocean Waves");
+        this.handlePlayback(this.stormToggle, this.stormAudio, "Stormy Rain");
 
         // --- Master Volume Monitor ---
         this.volumeSlider?.addEventListener('input', () => {
