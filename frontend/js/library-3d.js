@@ -811,10 +811,47 @@ class BookshelfRenderer3D {
         container.style.gap = '25px';
         container.style.width = '100%';
 
-        books.forEach((book) => {
-            const bookCard = this.createBookCard2D(book, shelfType);
-            container.appendChild(bookCard);
+        let renderIndex = 0;
+        const chunkSize = window.CONFIG?.CHUNK_SIZE || 20;
+
+        if (container._shelfObserver) {
+            container._shelfObserver.disconnect();
+        }
+
+        const sentinel = document.createElement('div');
+        sentinel.style.width = '100%';
+        sentinel.style.height = '20px';
+        sentinel.style.gridColumn = '1 / -1';
+
+        container._shelfObserver = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                renderChunk();
+            }
         });
+
+        const renderChunk = () => {
+            const chunk = books.slice(renderIndex, renderIndex + chunkSize);
+            if (chunk.length === 0) return;
+
+            if (sentinel.parentNode) {
+                container.removeChild(sentinel);
+            }
+
+            chunk.forEach((book) => {
+                const bookCard = this.createBookCard2D(book, shelfType);
+                container.appendChild(bookCard);
+            });
+
+            renderIndex += chunkSize;
+            if (renderIndex < books.length) {
+                container.appendChild(sentinel);
+                container._shelfObserver.observe(sentinel);
+            } else if (container._shelfObserver) {
+                container._shelfObserver.disconnect();
+            }
+        };
+
+        renderChunk();
 
         container.setAttribute('aria-label', `${shelfLabels[shelfType]} - ${books.length} book${books.length !== 1 ? 's' : ''}`);
     }
@@ -1249,10 +1286,47 @@ class BookshelfRenderer3D {
 
         container.innerHTML = '';
 
-        books.forEach((book, index) => {
-            const bookSpine = this.createBookSpine(book, index, shelfType);
-            container.appendChild(bookSpine);
+        let renderIndex = 0;
+        const chunkSize = window.CONFIG?.CHUNK_SIZE || 20;
+
+        if (container._shelfObserver) {
+            container._shelfObserver.disconnect();
+        }
+
+        const sentinel = document.createElement('div');
+        sentinel.style.width = '100%';
+        sentinel.style.height = '20px';
+        sentinel.style.flexShrink = '0';
+
+        container._shelfObserver = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                renderChunk();
+            }
         });
+
+        const renderChunk = () => {
+            const chunk = books.slice(renderIndex, renderIndex + chunkSize);
+            if (chunk.length === 0) return;
+
+            if (sentinel.parentNode) {
+                container.removeChild(sentinel);
+            }
+
+            chunk.forEach((book, i) => {
+                const bookSpine = this.createBookSpine(book, renderIndex + i, shelfType);
+                container.appendChild(bookSpine);
+            });
+
+            renderIndex += chunkSize;
+            if (renderIndex < books.length) {
+                container.appendChild(sentinel);
+                container._shelfObserver.observe(sentinel);
+            } else if (container._shelfObserver) {
+                container._shelfObserver.disconnect();
+            }
+        };
+
+        renderChunk();
 
         // Update aria-label with book count
         container.setAttribute('aria-label', `${shelfLabels[shelfType]} - ${books.length} book${books.length !== 1 ? 's' : ''}`);
