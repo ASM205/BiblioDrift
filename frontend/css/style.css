@@ -89,6 +89,29 @@
     padding: 0;
 }
 
+/* Smooth core animation and hover transitions for interactive elements */
+button,
+input,
+select,
+textarea,
+.search-input,
+.action-btn,
+.suggestion-btn,
+.send-btn,
+.btn-primary,
+.close-modal-btn,
+.close-genre-modal,
+.genre-card,
+.book-rec-item {
+    transition:
+        background-color 0.25s ease,
+        color 0.25s ease,
+        border-color 0.25s ease,
+        box-shadow 0.25s ease,
+        transform 0.25s ease,
+        opacity 0.2s ease;
+}
+
 html {
     scroll-behavior: smooth;
     transition: background-color 0.4s ease, color 0.4s ease;
@@ -201,10 +224,15 @@ header {
     color: var(--text-main);
 }
 
+.search-input:hover,
 .search-input:focus {
     background: var(--book-bg);
+    border-color: rgba(212, 175, 55, 0.35);
+}
+
+.search-input:focus {
     width: 300px;
-    box-shadow: var(--shadow-soft);
+    box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.14);
 }
 
 .search-icon {
@@ -304,6 +332,37 @@ main {
     margin: 0 auto;
     width: 100%;
     overflow-x: hidden;
+}
+
+/* Strong accessible focus states for keyboard navigation */
+button:focus-visible,
+.search-input:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.action-btn:focus-visible,
+.suggestion-btn:focus-visible,
+.send-btn:focus-visible,
+.btn-primary:focus-visible,
+.close-modal-btn:focus-visible,
+.close-genre-modal:focus-visible,
+.genre-card:focus-visible,
+.book-rec-item:focus-visible {
+    outline: 3px solid rgba(212, 175, 55, 0.35);
+    outline-offset: 2px;
+}
+
+select,
+.dropdown {
+    transition: background-color 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease, color 0.28s ease;
+}
+
+select:focus,
+.dropdown:focus,
+input:focus,
+textarea:focus {
+    box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.12);
+    border-color: rgba(212, 175, 55, 0.35);
 }
 
 /* --- Hero --- */
