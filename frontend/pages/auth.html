@@ -399,46 +399,37 @@
                             required autocomplete="current-password">
                     </div>
 
+                    <!-- 
+                        =============================================================
+                        SECURITY COMPLIANCE: CSRF TOKEN FIELD
+                        =============================================================
+                        This hidden input is dynamically populated with a one-time 
+                        security token provided by the backend. It protects against
+                        Cross-Site Request Forgery attacks by ensuring that the 
+                        form submission originated from this specific application 
+                        instance.
+                        =============================================================
+                    -->
+                    <input type="hidden" id="csrf_token" name="csrf_token" value="">
+
+                    <!-- Primary Action Button -->
                     <button type="submit" id="submitBtn" class="auth-btn">
                         Sign In
                     </button>
+
+                    <!-- Google Authentication -->
+                    <button type="button" id="googleAuthBtn" class="google-auth-btn">
+                        <i class="fa-brands fa-google"></i>
+                        <span>Sign in with Google</span>
+                    </button>
                 </form>
 
-                <div class="auth-footer">
+                <!-- Mode Toggle Link -->
+                <div class="auth-footer" style="margin-top: 1.5rem;">
                     <span id="toggleText" class="toggle-link">
                         No account? Create one.
                     </span>
                 </div>
-
-                <!-- 
-                    =============================================================
-                    SECURITY COMPLIANCE: CSRF TOKEN FIELD
-                    =============================================================
-                    This hidden input is dynamically populated with a one-time 
-                    security token provided by the backend. It protects against
-                    Cross-Site Request Forgery attacks by ensuring that the 
-                    form submission originated from this specific application 
-                    instance.
-                    =============================================================
-                -->
-                <input type="hidden" id="csrf_token" name="csrf_token" value="">
-
-                <!-- Primary Action Button -->
-                <button type="submit" id="submitBtn" class="auth-btn">
-                    Sign In
-                </button>
-
-                <button type="button" id="googleAuthBtn" class="google-auth-btn">
-                    <i class="fa-brands fa-google"></i>
-                    <span>Sign in with Google</span>
-                </button>
-            </form>
-            
-            <!-- Mode Toggle Link -->
-            <div class="auth-footer" style="margin-top: 1.5rem;">
-                <span id="toggleText" class="toggle-link">
-                    No account? Create one.
-                </span>
             </div>
         </section>
     </main>
