@@ -618,6 +618,35 @@
     <script src="../js/theme-manager.js"></script>
   <script src="../js/ambient.js"></script>
     <script src="../js/pwa.js"></script>
+  <!-- AI Chatbot Widget -->
+  <div id="ai-chatbot-widget" class="chatbot-widget">
+    <button id="chatbot-toggle-btn" class="chatbot-toggle-btn" title="Chat with Elara">
+      <i class="fa-solid fa-robot"></i>
+    </button>
+    <div id="chatbot-window" class="chatbot-window hidden">
+      <div class="chatbot-header">
+        <div class="chatbot-bot-info">
+          <div class="chatbot-avatar"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+          <div class="chatbot-name-status">
+            <h4>Elara</h4>
+            <span class="chatbot-status">The Bookseller</span>
+          </div>
+        </div>
+        <button id="chatbot-close-btn" class="chatbot-close-btn"><i class="fa-solid fa-times"></i></button>
+      </div>
+      <div id="chatbot-messages" class="chatbot-messages">
+        <div class="chat-message bot-message">
+          <p>Hello, wanderer. What kind of story are you looking for today?</p>
+        </div>
+      </div>
+      <div class="chatbot-input-area">
+        <input type="text" id="chatbot-input" placeholder="Describe a mood, setting, or feeling...">
+        <button id="chatbot-send-btn" class="chatbot-send-btn"><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </div>
+  <script src="../js/chatbot.js"></script>
+
 </body>
 
 </html>
